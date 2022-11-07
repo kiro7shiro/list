@@ -54,7 +54,7 @@ async function list(start, { matchers = [], recurse = true, dirs = false } = {})
         const files = []
         const absolute = path.resolve(start)
         try {
-            await fs.promises.access(absolute, fs.constants.R_OK || fs.constants.W_OK)
+            await fs.promises.access(absolute, fs.constants.R_OK | fs.constants.W_OK)
         } catch (error) {
             reject(new StartNotExists(start))
         }
