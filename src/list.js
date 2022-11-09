@@ -72,7 +72,7 @@ async function list(start, { matchers = [], directory = false, recurse = true } 
             let keep = true
             for (let mCmt = 0; mCmt < matchers.length; mCmt++) {
                 const matcher = matchers[mCmt]
-                keep = keep && matcher.test(item)
+                keep &&= matcher.test(item)
             }
             return keep
         })
