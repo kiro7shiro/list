@@ -34,74 +34,53 @@ class Errors {
  * @param {Boolean} options.dirs return only directory names
  * @returns {String[]}
  */
-async function list(start, { matchers = [], recurse = true, dirs = false } = {}) {
+async function list(start, { matchers = [], directory = false, recurse = true } = {}) {
 
-    /**
-     * Packs list() calls into an array for recursion.
-     * @param {String} absolute path of items to pack
-     * @returns {Promise[]}
-     */
-    async function packPromises(absolute) {
-        const dir = await fs.promises.readdir(absolute)
-        const promises = dir.reduce(function (prev, curr) {
-            prev.push(list(path.resolve(absolute, curr), { matchers, recurse, dirs }))
-            return prev
-        }, [])
-        return promises
+    const result = []
+    const absolute = path.resolve(start)
+    try {
+        // TODO : better file access check
+        await fs.promises.access(absolute, fs.constants.R_OK | fs.constants.W_OK)
+    } catch (error) {
+        reject(new StartNotExists(start))
     }
 
-    return new Promise(async function (resolve, reject) {
-        const files = []
-        const absolute = path.resolve(start)
-        try {
-            // TODO : better file access check
-            await fs.promises.access(absolute, fs.constants.R_OK | fs.constants.W_OK)
-        } catch (error) {
-            reject(new StartNotExists(start))
-        }
-        const stat = await fs.promises.stat(absolute)
-        const isDir = stat.isDirectory()
-        switch (true) {
-            case isDir && recurse && !dirs:
-                const promises = await packPromises(absolute)
-                const results = await Promise.all(promises)
-                files.push(...results.flat())
-                break
-            default:
-                if (isDir && dirs) {
-                    if (recurse) {
-                        const promises = await packPromises(absolute)
-                        const results = await Promise.all(promises)
-                        files.push(...results.flat())
-                    } else {
-                        const items = await fs.promises.readdir(absolute)
-                        const dir = (await asyncFilter(items, async function (item) {
-                            const iStat = await fs.promises.stat(path.resolve(absolute, item))
-                            return iStat.isDirectory()
-                        })).map(i => path.resolve(absolute, i))
-                        files.push(...dir)
-                    }
-                } else if (stat.isFile() && !dirs) {
-                    files.push(start)
-                }
-                break
-        }
-        let result = files
-        if (matchers.length) {
-            result = []
-            temp = files.filter(function (item) {
-                let keep = true
-                for (let mCmt = 0; mCmt < matchers.length; mCmt++) {
-                    const matcher = matchers[mCmt]
-                    keep = keep && matcher.test(item)
-                }
-                return keep
-            })
-            result.push(...temp)
-            
-        }
-        resolve(result)
-    })
+    const items = await fs.promises.readdir(absolute)
+    const dirs = (await asyncFilter(items, async function (item) {
+        const iStat = await fs.promises.stat(path.resolve(absolute, item))
+        return iStat.isDirectory()
+    })).map(i => path.resolve(absolute, i))
+    const files = (await asyncFilter(items, async function (item) {
+        const iStat = await fs.promises.stat(path.resolve(absolute, item))
+        return iStat.isFile()
+    })).map(i => path.resolve(absolute, i))
+
+    if (directory) {
+        result.push(...dirs)
+    } else {
+        result.push(...files)
+    }
+
+    if (recurse && dirs.length) {
+        const promises = dirs.map(dir => list(path.resolve(absolute, dir), { matchers, directory, recurse }))
+        const results = await Promise.all(promises)
+        result.push(...results.flat())
+    }
+
+    if (matchers.length) {
+        const filtered = result.filter(function (item) {
+            let keep = true
+            for (let mCmt = 0; mCmt < matchers.length; mCmt++) {
+                const matcher = matchers[mCmt]
+                keep = keep && matcher.test(item)
+            }
+            return keep
+        })
+        return filtered
+    } else {
+        return result
+    }
+
 }
 
 module.exports = { list, Errors }
